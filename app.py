@@ -3,32 +3,50 @@ import pandas as pd
 import datetime
 import time
 
-# --- 1. จำลอง Database (Shared State) ---
-# ใช้ cache_resource เพื่อให้ข้อมูลแชร์กันระหว่างเครื่องลูกค้าและเครื่องเจ้าของร้าน
+# ==========================================
+# 💾 1. DATABASE & STATE MANAGEMENT
+# ==========================================
 @st.cache_resource
 class FoodSystemDB:
     def __init__(self):
-        # ข้อมูลเมนูเริ่มต้น
+        # รายการอาหาร (Database)
         self.menu = {
             "m1": {
                 "name": "ขนมจีนน้ำเงี้ยว",
                 "price": 45,
                 "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Nam_ngiao.jpg/800px-Nam_ngiao.jpg",
                 "active": True,
-                "options": {
-                    "เพิ่มเส้น": 5,
-                    "เพิ่มเครื่อง": 10
-                }
+                "options": {"เพิ่มเส้น": 5, "เพิ่มเครื่อง": 10, "ไม่ผัก": 0}
             },
             "m2": {
+                "name": "ข้าวซอยไก่",
+                "price": 50,
+                "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Khao_Soi_Kai.jpg/800px-Khao_Soi_Kai.jpg",
+                "active": True,
+                "options": {"น่องลาย": 10, "พิเศษ": 10}
+            },
+            "m3": {
                 "name": "แคบหมู",
                 "price": 15,
                 "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Khaep_mu.jpg/800px-Khaep_mu.jpg",
                 "active": True,
-                "options": {} # ไม่มี Option เสริม
+                "options": {} 
+            },
+            "m4": {
+                "name": "น้ำพริกหนุ่ม+ผัก",
+                "price": 40,
+                "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Nam_phrik_num.jpg/800px-Nam_phrik_num.jpg",
+                "active": True,
+                "options": {"ไข่ต้ม": 10}
+            },
+            "m5": {
+                "name": "แกงฮังเล",
+                "price": 60,
+                "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Kaeng_hang_le.jpg/800px-Kaeng_hang_le.jpg",
+                "active": True,
+                "options": {"ข้าวสวย": 10, "ข้าวเหนียว": 10}
             }
         }
-        # รายการออเดอร์ทั้งหมด
         self.orders = []
 
     def add_order(self, order_data):
@@ -42,212 +60,197 @@ class FoodSystemDB:
 
 db = FoodSystemDB()
 
-# --- ตั้งค่าหน้าเว็บ ---
-st.set_page_config(page_title="ร้านขนมจีนน้ำเงี้ยว", layout="wide")
+# ตั้งค่าหน้าเว็บ
+st.set_page_config(page_title="ร้านอาหารเหนือเจ้า", layout="centered")
 
-# --- Function สำหรับสร้าง QR Code (จำลอง) ---
-def generate_qr(amount):
-    # ในการใช้งานจริง ให้ใช้ Library 'promptpay' เพื่อ Gen QR Code จริง
-    st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=PromptPay_{amount}", 
-             caption=f"สแกนเพื่อจ่ายเงิน {amount} บาท", width=150)
+# เตรียม Session State สำหรับตะกร้าสินค้า (เฉพาะลูกค้าคนนั้นๆ)
+if 'cart' not in st.session_state:
+    st.session_state.cart = []
 
 # ==========================================
-# 🛒 ส่วนของลูกค้า (Customer Side)
+# 🛒 CUSTOMER SIDE (ฝั่งลูกค้า)
 # ==========================================
 def customer_page():
-    st.header("🍜 สั่งขนมจีนออนไลน์")
+    st.title("🍜 สั่งอาหารเหนือออนไลน์")
 
-    # --- Step 1: ข้อมูลลูกค้า ---
-    with st.expander("📝 1. ข้อมูลจัดส่ง", expanded=True):
-        c_name = st.text_input("ชื่อลูกค้า:")
-        c_address = st.text_area("ที่อยู่ / บ้านเลขที่:")
+    # --- Step 1: ข้อมูลลูกค้า (ย่อเก็บได้) ---
+    with st.expander("👤 1. กรอกข้อมูลจัดส่ง (คลิกเพื่อแก้ไข)", expanded=not st.session_state.cart):
+        c_name = st.text_input("ชื่อของคุณ:", key="c_name")
+        c_address = st.text_area("ที่อยู่จัดส่ง / เบอร์โทร:", key="c_address")
 
-    if c_name and c_address:
-        # --- Step 2: เลือกเมนู ---
-        st.subheader("🍽️ 2. เลือกเมนู")
-        cart = []
-        total_price = 0
-
-        # วนลูปแสดงเมนู
-        for m_id, item in db.menu.items():
-            if item['active']: # แสดงเฉพาะเมนูที่เปิดขาย
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    st.image(item['img'], width=100)
-                with col2:
-                    st.write(f"**{item['name']}** - {item['price']} บาท")
+    # --- Step 2: เลือกเมนู (Add to Cart) ---
+    st.header("🍽️ 2. เลือกเมนู")
+    
+    for m_id, item in db.menu.items():
+        if item['active']:
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.image(item['img'], use_column_width=True)
+                with c2:
+                    st.subheader(f"{item['name']}")
+                    st.write(f"ราคาเริ่มต้น: **{item['price']}** บาท")
                     
-                    # ตัวเลือกเสริม (Options)
-                    selected_opts = []
-                    extra_cost = 0
-                    if item['options']:
-                        opts = st.multiselect(f"เลือกออปชันเสริม ({item['name']})", 
-                                            list(item['options'].keys()), 
-                                            key=f"opt_{m_id}")
-                        for o in opts:
-                            extra_cost += item['options'][o]
-                            selected_opts.append(f"{o} (+{item['options'][o]})")
-                    
-                    # จำนวน
-                    qty = st.number_input(f"จำนวน", min_value=0, max_value=20, key=f"qty_{m_id}")
-                    
-                    if qty > 0:
-                        item_total = (item['price'] + extra_cost) * qty
-                        cart.append({
-                            "item_name": item['name'],
-                            "options": selected_opts,
-                            "qty": qty,
-                            "price": item_total
-                        })
-                        total_price += item_total
-                st.divider()
+                    # Form แยกแต่ละเมนู เพื่อไม่ให้ค่าตีกัน
+                    with st.form(key=f"form_{m_id}"):
+                        # เลือก Option
+                        selected_opts = []
+                        extra_price = 0
+                        if item['options']:
+                            opts = st.multiselect("ตัวเลือกเสริม:", list(item['options'].keys()), key=f"opt_{m_id}")
+                            for o in opts:
+                                extra_price += item['options'][o]
+                                selected_opts.append(f"{o} (+{item['options'][o]})")
+                        
+                        # เลือกจำนวน
+                        qty = st.number_input("จำนวน", min_value=1, max_value=20, value=1, key=f"qty_{m_id}")
+                        
+                        # ปุ่ม Add
+                        submitted = st.form_submit_button("➕ เพิ่มลงตะกร้า")
+                        if submitted:
+                            total_item_price = (item['price'] + extra_price) * qty
+                            st.session_state.cart.append({
+                                "id": m_id,
+                                "name": item['name'],
+                                "options": selected_opts, # เก็บเป็น List รายชื่อ option
+                                "qty": qty,
+                                "price": total_item_price
+                            })
+                            st.success(f"เพิ่ม {item['name']} แล้ว!")
+                            time.sleep(0.5)
+                            st.rerun()
 
-        # --- Step 3: สรุปยอดและจ่ายเงิน ---
-        if len(cart) > 0:
-            st.subheader(f"💰 ยอดรวมทั้งหมด: {total_price} บาท")
-            with st.expander("💸 3. ชำระเงิน"):
-                st.write("รายการสั่งซื้อของคุณ:")
-                for c in cart:
-                    st.text(f"- {c['item_name']} x{c['qty']} ({', '.join(c['options'])}) = {c['price']} บ.")
+    # --- Step 3: ตะกร้าสินค้า & ชำระเงิน ---
+    st.divider()
+    st.header("🛒 3. ตะกร้าของฉัน")
+
+    if not st.session_state.cart:
+        st.info("ตะกร้ายังว่างอยู่ครับ เลือกเมนูด้านบนได้เลย")
+    else:
+        # แสดงรายการในตะกร้า
+        total_order_price = 0
+        for i, cart_item in enumerate(st.session_state.cart):
+            col_name, col_price, col_del = st.columns([3, 1, 1])
+            with col_name:
+                st.write(f"**{i+1}. {cart_item['name']}** x{cart_item['qty']}")
+                if cart_item['options']:
+                    st.caption(f"เสริม: {', '.join(cart_item['options'])}")
+            with col_price:
+                st.write(f"{cart_item['price']} บ.")
+            with col_del:
+                if st.button("❌ ลบ", key=f"del_{i}"):
+                    st.session_state.cart.pop(i)
+                    st.rerun()
+            
+            total_order_price += cart_item['price']
+            st.divider()
+
+        st.subheader(f"💰 ยอดรวมทั้งสิ้น: {total_order_price} บาท")
+
+        # ส่วนชำระเงิน
+        if c_name and c_address:
+            with st.expander("💸 จ่ายเงินและยืนยันออเดอร์", expanded=True):
+                # QR Code (ใช้ API สร้าง QR PromptPay ได้ถ้าต้องการ)
+                st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=PromptPay_{total_order_price}", 
+                         caption=f"สแกน {total_order_price} บาท", width=150)
                 
-                generate_qr(total_price)
-                
-                slip_file = st.file_uploader("แนบสลิปโอนเงิน", type=['jpg', 'png'])
+                uploaded_slip = st.file_uploader("แนบสลิปโอนเงิน:", type=['jpg', 'png', 'jpeg'])
                 
                 if st.button("✅ ยืนยันการสั่งซื้อ"):
-                    if slip_file is None:
-                        st.error("กรุณาแนบสลิปโอนเงินก่อนครับ")
+                    if not uploaded_slip:
+                        st.error("กรุณาแนบสลิปก่อนครับ")
                     else:
-                        # บันทึกออเดอร์ลงระบบ
+                        # สร้าง Order ID
                         order_id = f"ORD-{int(time.time())}"
                         new_order = {
                             "id": order_id,
                             "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                             "customer": c_name,
                             "address": c_address,
-                            "items": cart,
-                            "total": total_price,
-                            "status": "รอการตรวจสอบ", # สถานะเริ่มต้น
-                            "slip": "uploaded" # (ในระบบจริงต้อง save ไฟล์)
+                            "items": st.session_state.cart, # เอาทั้งตะกร้าไปบันทึก
+                            "total": total_order_price,
+                            "status": "รอตรวจสอบ",
+                            "slip": "uploaded"
                         }
                         db.add_order(new_order)
-                        st.success(f"สั่งซื้อสำเร็จ! รหัสออเดอร์ของคุณคือ: {order_id}")
-                        st.info("กรุณารอร้านค้าตรวจสอบสถานะ")
+                        # เคลียร์ตะกร้า
+                        st.session_state.cart = []
+                        st.success(f"ขอบคุณครับ! รหัสออเดอร์: {order_id}")
+                        st.balloons()
+        else:
+            st.warning("⚠️ กรุณากรอก 'ชื่อ' และ 'ที่อยู่' ด้านบนให้ครบก่อนชำระเงินครับ")
 
-    # --- Step 4: เช็คสถานะ ---
-    st.divider()
-    st.subheader("🔎 เช็คสถานะคำสั่งซื้อ")
-    check_name = st.text_input("ค้นหาด้วยชื่อของคุณ:")
-    if check_name:
-        found = False
-        for order in db.orders:
-            if check_name in order['customer']:
-                st.info(f"📍 ออเดอร์ {order['id']}: สถานะ **{order['status']}**")
-                found = True
-        if not found:
-            st.warning("ไม่พบออเดอร์ (หรือร้านยังไม่อัปเดต)")
+    # --- Step 4: เช็คสถานะ (เหมือนเดิม) ---
+    with st.expander("🔎 ติดตามสถานะออเดอร์"):
+        search_name = st.text_input("พิมพ์ชื่อเพื่อค้นหา:")
+        if search_name:
+            for order in reversed(db.orders):
+                if search_name in order['customer']:
+                    st.write(f"**Order {order['id']}**: {order['status']} ({order['time']})")
 
 # ==========================================
-# 👨‍🍳 ส่วนของเจ้าของร้าน (Admin Side)
+# 👨‍🍳 ADMIN SIDE (ฝั่งเจ้าของร้าน)
 # ==========================================
 def admin_page():
-    st.title("👨‍🍳 ระบบจัดการร้าน (Admin)")
+    st.title("👨‍🍳 จัดการร้านค้า")
     
-    tab1, tab2, tab3 = st.tabs(["📦 รายการสั่งซื้อ", "🛠️ จัดการเมนู", "📊 สรุปรายได้"])
+    tab1, tab2, tab3 = st.tabs(["📦 ออเดอร์เข้าใหม่", "🛠️ แก้ไขเมนู", "📊 รายได้"])
 
-    # --- Tab 1: รายการสั่งซื้อ ---
     with tab1:
-        st.write("### รายการที่เข้ามาล่าสุด")
         if not db.orders:
-            st.info("ยังไม่มีออเดอร์วันนี้")
+            st.info("ยังไม่มีรายการสั่งซื้อ")
         else:
-            # แปลงเป็น DataFrame เพื่อแสดงผลรวมๆ ก่อน
-            df = pd.DataFrame(db.orders)
-            st.dataframe(df[['time', 'id', 'customer', 'status', 'total']])
-            
-            st.divider()
-            st.write("### จัดการสถานะออเดอร์")
-            
-            # วนลูปจัดการทีละออเดอร์
-            for i, order in enumerate(reversed(db.orders)): # เอาออเดอร์ล่าสุดขึ้นก่อน
-                idx = len(db.orders) - 1 - i # หา index จริงใน list
-                
+            for i, order in enumerate(reversed(db.orders)):
+                real_idx = len(db.orders) - 1 - i
                 with st.container(border=True):
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        st.write(f"**#{order['id']}** | คุณ {order['customer']} ({order['time']})")
-                        st.write(f"📍 ที่อยู่: {order['address']}")
-                        st.write("รายการ:")
-                        text_items = ""
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.subheader(f"#{order['id']} | คุณ {order['customer']}")
+                        st.write(f"📍 {order['address']}")
+                        st.write("---")
                         for item in order['items']:
-                            text_items += f"- {item['item_name']} x{item['qty']} {item['options']}\n"
-                        st.text(text_items)
-                        st.write(f"💰 ยอดโอน: **{order['total']} บาท** (มีสลิปแนบมา)")
+                            opts = f" ({', '.join(item['options'])})" if item['options'] else ""
+                            st.write(f"- {item['name']} x{item['qty']} {opts}")
+                        st.write("---")
+                        st.write(f"💰 **ยอดโอน: {order['total']} บาท**")
                     
-                    with col2:
-                        current_status = order['status']
-                        status_options = ["รอการตรวจสอบ", "กำลังทำอาหาร", "กำลังส่ง", "ส่งสำเร็จ", "ยกเลิก"]
-                        new_status = st.selectbox("เปลี่ยนสถานะ:", status_options, index=status_options.index(current_status), key=f"st_{order['id']}")
-                        
-                        if new_status != current_status:
-                            db.update_order_status(idx, new_status)
-                            st.success("อัปเดตแล้ว!")
-                            time.sleep(1)
+                    with c2:
+                        st.write(f"สถานะ: **{order['status']}**")
+                        status_list = ["รอตรวจสอบ", "กำลังปรุง", "กำลังส่ง", "ส่งสำเร็จ", "ยกเลิก"]
+                        new_stat = st.selectbox("เปลี่ยนสถานะ", status_list, index=status_list.index(order['status']), key=f"s_{order['id']}")
+                        if new_stat != order['status']:
+                            db.update_order_status(real_idx, new_stat)
                             st.rerun()
 
-    # --- Tab 2: จัดการเมนู (แก้ไขราคา/รูป/เปิดปิด) ---
-    with tab2:
-        st.write("### แก้ไขข้อมูลเมนู")
+    with tab2: # จัดการเมนู (เหมือนเดิมแต่เพิ่มเมนู)
+        st.write("รายการเมนูอาหาร")
         for m_id, item in db.menu.items():
-            with st.expander(f"✏️ แก้ไข: {item['name']}", expanded=True):
-                c1, c2, c3 = st.columns(3)
-                
-                # แก้ไขราคา
-                new_price = c1.number_input("ราคา", value=item['price'], key=f"p_{m_id}")
-                if new_price != item['price']:
-                    db.update_menu(m_id, 'price', new_price)
-                    st.rerun()
-                
-                # เปิด-ปิด เมนู
-                is_active = c2.checkbox("เปิดขาย", value=item['active'], key=f"a_{m_id}")
-                if is_active != item['active']:
-                    db.update_menu(m_id, 'active', is_active)
-                    st.rerun()
-                
-                # แก้ไขรูป (ใส่ URL)
-                new_img = st.text_input("URL รูปภาพ", value=item['img'], key=f"i_{m_id}")
-                if new_img != item['img']:
-                    db.update_menu(m_id, 'img', new_img)
+            with st.expander(f"✏️ {item['name']}", expanded=False):
+                new_p = st.number_input("ราคา", value=item['price'], key=f"p_{m_id}")
+                new_active = st.checkbox("เปิดขาย", value=item['active'], key=f"a_{m_id}")
+                if new_p != item['price'] or new_active != item['active']:
+                    db.update_menu(m_id, 'price', new_p)
+                    db.update_menu(m_id, 'active', new_active)
                     st.rerun()
 
-    # --- Tab 3: สรุปรายได้ ---
-    with tab3:
-        st.write("### 📈 สรุปยอดขายวันนี้")
+    with tab3: # สรุปยอด
         if db.orders:
-            total_sales = sum(o['total'] for o in db.orders if o['status'] != 'ยกเลิก')
-            completed_orders = sum(1 for o in db.orders if o['status'] == 'ส่งสำเร็จ')
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("รายได้รวม", f"{total_sales} บาท")
-            col2.metric("ออเดอร์ทั้งหมด", f"{len(db.orders)} รายการ")
-            col3.metric("ส่งสำเร็จแล้ว", f"{completed_orders} รายการ")
-            
-            st.bar_chart(pd.DataFrame(db.orders).set_index('time')['total'])
-        else:
-            st.write("ยังไม่มีข้อมูลการขาย")
+            total = sum(o['total'] for o in db.orders if o['status'] != 'ยกเลิก')
+            st.metric("รายได้รวมทั้งหมด", f"{total} บาท")
+            df = pd.DataFrame(db.orders)
+            st.dataframe(df[['time', 'customer', 'total', 'status']])
 
 # ==========================================
-# 🧭 Main Navigation (เลือกว่าเป็นใคร)
+# MAIN APP
 # ==========================================
-# สร้าง Sidebar เพื่อสลับโหมด (ในความเป็นจริงอาจแยก URL กัน)
-mode = st.sidebar.radio("เลือกโหมดการใช้งาน", ["ลูกค้า (Customer)", "เจ้าของร้าน (Admin)"])
+# Sidebar ซ่อนเมนู Admin ไว้เนียนๆ
+menu = st.sidebar.selectbox("Menu", ["ลูกค้าสั่งอาหาร", "Admin Login"])
 
-if mode == "ลูกค้า (Customer)":
+if menu == "ลูกค้าสั่งอาหาร":
     customer_page()
-else:
-    # เพิ่มระบบ Login ง่ายๆ สำหรับ Admin
-    password = st.sidebar.text_input("รหัสผ่าน Admin", type="password")
-    if password == "1234": # รหัสผ่านคือ 1234
+elif menu == "Admin Login":
+    pwd = st.sidebar.text_input("Password", type="password")
+    if pwd == "1234":
         admin_page()
     else:
-        st.sidebar.warning("กรุณาใส่รหัสผ่าน (default: 1234)")
+        st.warning("กรุณาใส่รหัสผ่าน")
