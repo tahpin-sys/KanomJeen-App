@@ -6,12 +6,12 @@ import time
 # ==========================================
 # 🎨 0. CONFIG & CSS
 # ==========================================
-st.set_page_config(page_title="KanomJeen App", layout="centered", page_icon="🍜")
+st.set_page_config(page_title="KanomJeen Manager", layout="centered", page_icon="🍜")
 
 st.markdown("""
 <style>
-    /* ปรับ Font และ Button */
-    .stButton>button { border-radius: 10px; font-weight: 600; }
+    /* Global Font & Button */
+    .stButton>button { border-radius: 12px; font-weight: 600; }
     
     /* Card สินค้า */
     div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] > div[data-testid="stVerticalBlock"] {
@@ -22,27 +22,51 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     
-    /* Highlight สถานะ */
-    .status-badge {
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-size: 0.8em;
-        font-weight: bold;
+    /* 🛒 Sticky Footer (แถบตะกร้าลอยด้านล่าง) */
+    .sticky-footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #FF4B4B;
         color: white;
+        text-align: center;
+        padding: 15px 10px;
+        font-size: 18px;
+        font-weight: bold;
+        z-index: 9999;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        border-top-left-radius: 15px;
+        border-top-right-radius: 15px;
     }
+    .sticky-footer a {
+        color: white; 
+        text-decoration: none;
+    }
+    
+    /* ซ่อน Footer เดิมของ Streamlit เพื่อความเนียน */
+    footer {visibility: hidden;}
+    
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🕒 1. HELPER FUNCTIONS (TIMEZONE)
+# 🕒 1. HELPER FUNCTIONS
 # ==========================================
 def get_thai_now():
-    """แปลงเวลา Server (UTC) เป็นเวลาไทย (UTC+7)"""
     return datetime.datetime.utcnow() + datetime.timedelta(hours=7)
 
 def get_thai_time_str():
-    """คืนค่าเวลาไทยแบบ String สวยๆ"""
     return get_thai_now().strftime("%d/%m/%Y %H:%M")
+
+def play_notification_sound():
+    # ฝัง HTML5 Audio เพื่อเล่นเสียงแจ้งเตือน
+    audio_html = """
+        <audio autoplay>
+        <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+        </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
 
 # ==========================================
 # 💾 2. DATABASE & STATE
@@ -65,7 +89,6 @@ class FoodSystemDB:
     def update_menu(self, menu_id, field, value):
         self.menu[menu_id][field] = value
 
-    # ฟังก์ชันจัดการ Option
     def add_option(self, menu_id, opt_name, opt_price):
         self.menu[menu_id]['options'][opt_name] = opt_price
 
@@ -75,8 +98,13 @@ class FoodSystemDB:
 
 db = FoodSystemDB()
 
+# State สำหรับลูกค้า
 if 'cart' not in st.session_state:
     st.session_state.cart = []
+
+# State สำหรับ Admin (เพื่อจำจำนวนออเดอร์เก่า ไว้เทียบกับอันใหม่)
+if 'last_order_count' not in st.session_state:
+    st.session_state.last_order_count = 0
 
 # ==========================================
 # 🛍️ UI COMPONENTS
@@ -84,7 +112,20 @@ if 'cart' not in st.session_state:
 def render_header():
     st.image("https://i.postimg.cc/637Jz9Zs/Gemini_Generated_Image_bcsz82bcsz82bcsz.png", use_column_width=True)
     st.title("🍜 KanomJeen Weekend")
-    st.caption(f"อร่อยเหมือนกินที่เชียงใหม่ (เวลาปัจจุบัน: {get_thai_time_str()} น.)")
+    st.caption(f"เวลาปัจจุบัน: {get_thai_time_str()} น.")
+
+def render_sticky_footer():
+    """แสดงแถบสรุปยอดเงินด้านล่างสุด"""
+    if st.session_state.cart:
+        total = sum(item['price'] for item in st.session_state.cart)
+        count = sum(item['qty'] for item in st.session_state.cart)
+        # HTML Injection สำหรับ Sticky Footer
+        st.markdown(f"""
+            <div class="sticky-footer">
+                🛒 ในตะกร้า {count} ชิ้น | รวม <b>{total}</b> บาท <br>
+                <span style="font-size:0.8em; font-weight:normal;">(กดที่ Tab 'ตะกร้าสินค้า' ด้านบนเพื่อชำระเงิน)</span>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ==========================================
 # 🛒 CUSTOMER FLOW
@@ -109,18 +150,14 @@ def customer_page():
                     st.markdown(f":red[**{item['price']} บาท**]")
                     
                     with st.form(key=f"form_{m_id}", border=False):
-                        # Show Options Dynamically
                         selected_opts = []
                         extra_price = 0
                         if item['options']:
                             st.caption("เลือกเพิ่มเติม:")
-                            # ใช้ Multiselect เพื่อเลือกหลาย option
-                            # Format: "ชื่อ (+ราคา)"
                             opt_choices = [f"{k} (+{v})" for k,v in item['options'].items()]
                             selection = st.multiselect("Option", opt_choices, label_visibility="collapsed", key=f"sel_{m_id}")
                             
                             for s in selection:
-                                # แกะชื่อและราคาออกจาก String เช่น "เพิ่มเส้น (+5)"
                                 raw_name = s.split(" (+")[0]
                                 price_val = int(s.split(" (+")[1].replace(")", ""))
                                 selected_opts.append(raw_name)
@@ -128,19 +165,23 @@ def customer_page():
                         
                         qty = st.number_input("จำนวน", 1, 20, 1, key=f"qty_{m_id}")
                         
+                        # ปุ่มเพิ่มลงตะกร้า
                         if st.form_submit_button("➕ ใส่ตะกร้า", type="primary", use_container_width=True):
                             final_price = (item['price'] + extra_price) * qty
                             st.session_state.cart.append({
                                 "id": m_id, 
                                 "name": item['name'], 
-                                "options": selected_opts, # เก็บเป็น List ชื่อ Option
+                                "options": selected_opts,
                                 "qty": qty, 
                                 "price": final_price,
                                 "unit_price": item['price'] + extra_price
                             })
-                            st.toast(f"เพิ่ม {item['name']} ลงตะกร้าแล้ว", icon="✅")
+                            st.toast(f"เพิ่ม {item['name']} แล้ว", icon="✅")
                             time.sleep(0.5)
                             st.rerun()
+        
+        # เรียกใช้ Sticky Footer (จะทำงานเมื่อมีของในตะกร้า)
+        render_sticky_footer()
 
     # --- TAB 2: CART ---
     with tab_cart:
@@ -171,18 +212,17 @@ def customer_page():
                 
                 col_qr, col_upl = st.columns(2)
                 with col_qr:
-                    st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=PromptPay_{total_price}", caption="QR แม่มณี / PromptPay")
+                    st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=PromptPay_{total_price}", caption="QR PromptPay")
                 with col_upl:
                     uploaded_slip = st.file_uploader("แนบสลิปโอนเงิน", type=['jpg', 'png'])
 
                 if st.form_submit_button("✅ สั่งซื้อทันที", type="primary", use_container_width=True):
                     if c_name and c_addr and uploaded_slip:
-                        # สร้าง Order Object
                         order_id = f"ORD-{int(time.time())}"
                         new_order = {
                             "id": order_id,
-                            "timestamp": get_thai_now(), # เก็บเป็น Object เพื่อ sort ง่าย
-                            "time_str": get_thai_time_str(), # เก็บ String ไว้โชว์
+                            "timestamp": get_thai_now(),
+                            "time_str": get_thai_time_str(),
                             "customer": c_name,
                             "address": c_addr,
                             "items": st.session_state.cart,
@@ -191,15 +231,17 @@ def customer_page():
                             "slip_img": uploaded_slip
                         }
                         db.orders.append(new_order)
-                        st.session_state.cart = [] # Clear
+                        st.session_state.cart = []
                         st.balloons()
                         st.success(f"สั่งซื้อสำเร็จ! รหัสออเดอร์: {order_id}")
+                        time.sleep(2)
+                        st.rerun()
                     else:
                         st.error("กรุณากรอกข้อมูลให้ครบถ้วน")
 
     # --- TAB 3: STATUS ---
     with tab_status:
-        st.subheader("🔍 ติดตามพัสดุ / อาหาร")
+        st.subheader("🔍 ติดตามพัสดุ")
         search = st.text_input("ค้นหา (ชื่อ หรือ รหัสออเดอร์)")
         if search:
             found = False
@@ -210,7 +252,6 @@ def customer_page():
                         st.markdown(f"##### ออเดอร์ {order['id']}")
                         st.caption(f"สั่งเมื่อ: {order['time_str']}")
                         
-                        # Logic Status Bar
                         flow = ["รอการตรวจสอบ", "กำลังทำอาหาร", "กำลังจัดส่ง", "จัดส่งสำเร็จ"]
                         curr = order['status']
                         if curr == "ยกเลิก":
@@ -227,170 +268,119 @@ def customer_page():
 # ==========================================
 def admin_page():
     st.title("👨‍🍳 KanomJeen Manager")
-    st.caption(f"Login Time: {get_thai_time_str()}")
     
-    tab_orders, tab_menu, tab_analytics = st.tabs(["📦 จัดการออเดอร์", "🛠️ แก้ไขเมนู & Option", "📊 สรุปยอดขายละเอียด"])
+    # --- Notification Logic ---
+    # ตรวจสอบว่ามีออเดอร์เพิ่มขึ้นหรือไม่
+    current_order_count = len(db.orders)
+    if current_order_count > st.session_state.last_order_count:
+        # มีออเดอร์ใหม่!
+        st.toast(f"🔔 มีออเดอร์ใหม่เข้ามา! (รวม {current_order_count})", icon="🔥")
+        play_notification_sound()
+        st.session_state.last_order_count = current_order_count # อัปเดตตัวนับ
+
+    # Toggle สำหรับ Auto-refresh
+    col_head, col_toggle = st.columns([3, 1])
+    with col_head:
+        st.caption(f"Last Update: {get_thai_time_str()}")
+    with col_toggle:
+        auto_refresh = st.toggle("🔴 โหมดรับออเดอร์ (Live)", value=False)
+    
+    if auto_refresh:
+        time.sleep(10) # รีเฟรชทุก 10 วินาที
+        st.rerun()
+
+    # Tabs
+    tab_orders, tab_menu, tab_analytics = st.tabs(["📦 ออเดอร์", "🛠️ เมนู/Option", "📊 สรุปยอด"])
     
     # --- ADMIN: ORDERS ---
     with tab_orders:
         status_opts = ["รอการตรวจสอบ", "กำลังทำอาหาร", "กำลังจัดส่ง", "จัดส่งสำเร็จ", "ยกเลิก"]
         
         if not db.orders:
-            st.info("ยังไม่มีออเดอร์เข้ามาวันนี้")
+            st.info("ยังไม่มีออเดอร์")
         
-        # วนลูปแสดงออเดอร์
         for i, order in enumerate(reversed(db.orders)):
             real_idx = len(db.orders) - 1 - i
-            
-            # การ์ดออเดอร์
             with st.container(border=True):
                 c1, c2 = st.columns([2, 1])
                 with c1:
-                    st.markdown(f"#### #{order['id']} | คุณ {order['customer']}")
+                    st.markdown(f"#### #{order['id']} | {order['customer']}")
                     st.caption(f"🕒 {order['time_str']} | 🏠 {order['address']}")
-                    
-                    # แสดงรายการอาหาร พร้อม Option (Requirement: Admin ต้องเห็น Option)
                     st.markdown("---")
                     for item in order['items']:
                         opt_str = f" (+ {', '.join(item['options'])})" if item['options'] else ""
                         st.write(f"• **{item['name']}** x{item['qty']} {opt_str}")
-                    st.markdown("---")
                     st.markdown(f"💰 ยอดรวม: **{order['total']} บาท**")
-                    
                     if order.get('slip_img'):
-                        with st.expander("ดูสลิปโอนเงิน"):
-                            st.image(order['slip_img'], width=250)
+                        st.expander("ดูสลิป").image(order['slip_img'])
                 
                 with c2:
-                    st.write("สถานะปัจจุบัน:")
                     curr_stat = order['status']
-                    # Selectbox เปลี่ยนสถานะ
                     idx = status_opts.index(curr_stat) if curr_stat in status_opts else 0
-                    new_stat = st.selectbox("Update Status", status_opts, index=idx, key=f"st_{order['id']}", label_visibility="collapsed")
-                    
+                    new_stat = st.selectbox("Status", status_opts, index=idx, key=f"st_{order['id']}", label_visibility="collapsed")
                     if new_stat != curr_stat:
                         db.update_order_status(real_idx, new_stat)
-                        st.toast(f"อัปเดตออเดอร์ {order['id']} แล้ว!")
-                        time.sleep(1)
                         st.rerun()
 
-    # --- ADMIN: MENU & OPTIONS ---
+    # --- ADMIN: MENU ---
     with tab_menu:
-        st.info("💡 Tip: คุณสามารถ เพิ่ม/ลบ Option ของแต่ละเมนูได้ที่นี่")
         for m_id, item in db.menu.items():
-            with st.expander(f"⚙️ แก้ไข: {item['name']}", expanded=False):
-                # 1. แก้ไขข้อมูลพื้นฐาน
-                c1, c2, c3 = st.columns([2, 1, 1])
-                new_price = c1.number_input("ราคาหลัก", value=item['price'], key=f"p_{m_id}")
-                new_active = c2.toggle("เปิดขาย", value=item['active'], key=f"a_{m_id}")
-                new_img = c3.text_input("URL รูป", value=item['img'], key=f"i_{m_id}")
+            with st.expander(f"⚙️ {item['name']}", expanded=False):
+                c1, c2 = st.columns([2, 1])
+                np = c1.number_input("ราคา", value=item['price'], key=f"p_{m_id}")
+                na = c2.toggle("Active", value=item['active'], key=f"a_{m_id}")
+                ni = st.text_input("IMG URL", value=item['img'], key=f"i_{m_id}")
                 
-                # Update พื้นฐานทันที
-                if new_price != item['price'] or new_active != item['active'] or new_img != item['img']:
-                    db.update_menu(m_id, 'price', new_price)
-                    db.update_menu(m_id, 'active', new_active)
-                    db.update_menu(m_id, 'img', new_img)
+                if np != item['price'] or na != item['active'] or ni != item['img']:
+                    db.update_menu(m_id, 'price', np)
+                    db.update_menu(m_id, 'active', na)
+                    db.update_menu(m_id, 'img', ni)
                     st.rerun()
-
-                st.markdown("---")
-                st.markdown("**จัดการ Option (ตัวเลือกเสริม)**")
                 
-                # 2. แสดง Option ที่มีอยู่
+                st.write("**Options:**")
                 if item['options']:
-                    for opt_name, opt_val in item['options'].items():
-                        oc1, oc2, oc3 = st.columns([3, 2, 1])
-                        oc1.text(f"• {opt_name}")
-                        oc2.text(f"+{opt_val} บาท")
-                        if oc3.button("ลบ", key=f"del_opt_{m_id}_{opt_name}"):
-                            db.remove_option(m_id, opt_name)
+                    for oname, oval in item['options'].items():
+                        oc1, oc2 = st.columns([3, 1])
+                        oc1.text(f"{oname} (+{oval})")
+                        if oc2.button("ลบ", key=f"d_{m_id}_{oname}"):
+                            db.remove_option(m_id, oname)
                             st.rerun()
-                else:
-                    st.caption("เมนูนี้ยังไม่มีตัวเลือกเสริม")
-
-                # 3. เพิ่ม Option ใหม่
+                
                 with st.form(key=f"add_opt_{m_id}"):
-                    ac1, ac2 = st.columns([3, 2])
-                    new_opt_name = ac1.text_input("ชื่อตัวเลือก (เช่น ไข่ต้ม)", key=f"nopt_{m_id}")
-                    new_opt_price = ac2.number_input("ราคาบวกเพิ่ม", min_value=0, value=5, key=f"popt_{m_id}")
-                    
-                    if st.form_submit_button("เพิ่ม Option"):
-                        if new_opt_name:
-                            db.add_option(m_id, new_opt_name, new_opt_price)
-                            st.success("เพิ่มเรียบร้อย")
+                    c_n, c_p = st.columns(2)
+                    new_n = c_n.text_input("ชื่อ Option")
+                    new_p = c_p.number_input("ราคาบวก", 0)
+                    if st.form_submit_button("เพิ่ม"):
+                        if new_n:
+                            db.add_option(m_id, new_n, new_p)
                             st.rerun()
 
     # --- ADMIN: ANALYTICS ---
     with tab_analytics:
-        if not db.orders:
-            st.warning("ยังไม่มีข้อมูลการขาย")
-        else:
-            # เตรียมข้อมูล (Data Preparation)
-            valid_orders = [o for o in db.orders if o['status'] != 'ยกเลิก']
+        if db.orders:
+            valid = [o for o in db.orders if o['status'] != 'ยกเลิก']
+            rev = sum(o['total'] for o in valid)
+            st.metric("ยอดขายรวม", f"{rev:,} บาท")
             
-            # 1. KPI Cards
-            total_rev = sum(o['total'] for o in valid_orders)
-            total_ord = len(valid_orders)
-            if total_ord > 0:
-                avg_ticket = total_rev / total_ord
-            else:
-                avg_ticket = 0
-                
-            k1, k2, k3 = st.columns(3)
-            k1.metric("💰 รายได้รวม", f"{total_rev:,} บาท")
-            k2.metric("🧾 ออเดอร์สำเร็จ", f"{total_ord} รายการ")
-            k3.metric("📈 เฉลี่ยต่อบิล", f"{avg_ticket:.0f} บาท")
-            
-            st.markdown("---")
-
-            # 2. แยกรายละเอียดรายเมนู (Item Breakdown)
-            st.subheader("🏆 เมนูขายดี (Best Sellers)")
-            
-            # ระเบิด Data (Explode) จาก Order -> Items
-            all_sold_items = []
-            for o in valid_orders:
-                for item in o['items']:
-                    all_sold_items.append({
-                        "Menu": item['name'],
-                        "Qty": item['qty'],
-                        "Total": item['price']
-                    })
-            
-            if all_sold_items:
-                df_items = pd.DataFrame(all_sold_items)
-                
-                # Group By Menu
-                df_grouped = df_items.groupby("Menu").sum().reset_index()
-                df_grouped = df_grouped.sort_values(by="Qty", ascending=False)
-                
-                # แสดงเป็น Bar Chart
-                st.bar_chart(df_grouped.set_index("Menu")["Qty"])
-                
-                # แสดงเป็นตาราง
-                st.dataframe(df_grouped, use_container_width=True)
-            
-            st.markdown("---")
-            
-            # 3. ช่วงเวลาขายดี (Time Analysis)
-            st.subheader("⏰ ช่วงเวลาที่มีการสั่งซื้อ")
-            order_times = [o['timestamp'].hour for o in valid_orders]
-            df_time = pd.DataFrame(order_times, columns=["Hour"])
-            hour_counts = df_time['Hour'].value_counts().sort_index()
-            st.bar_chart(hour_counts)
-            st.caption("แกน X: ชั่วโมง (0-23) | แกน Y: จำนวนออเดอร์")
+            # Best Seller
+            items = []
+            for o in valid:
+                for i in o['items']: items.append(i['name'])
+            if items:
+                st.write("สินค้าขายดี:")
+                st.bar_chart(pd.Series(items).value_counts())
 
 # ==========================================
 # 🧭 MAIN NAVIGATION
 # ==========================================
 with st.sidebar:
     st.header("KanomJeen App")
-    st.caption(f"Current Time (TH): {get_thai_time_str()}")
-    page = st.radio("เลือกโหมดใช้งาน", ["ลูกค้าสั่งอาหาร", "เจ้าของร้าน (Admin)"])
+    st.caption(f"Current Time: {get_thai_time_str()}")
+    page = st.radio("Mode", ["ลูกค้า", "Admin"])
 
-if page == "ลูกค้าสั่งอาหาร":
+if page == "ลูกค้า":
     customer_page()
 else:
-    pwd = st.sidebar.text_input("รหัสผ่าน Admin", type="password")
+    pwd = st.sidebar.text_input("Password", type="password")
     if pwd == "1234":
         admin_page()
-    elif pwd:
-        st.error("รหัสผ่านไม่ถูกต้อง")
