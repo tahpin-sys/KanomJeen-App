@@ -45,7 +45,7 @@ class FoodSystemDB:
     def __init__(self):
         self.menu = {
             "m1": {"name": "ขนมจีนน้ำเงี้ยว", "price": 45, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Nam_ngiao.jpg/800px-Nam_ngiao.jpg", "active": True, "options": {"เพิ่มเส้น": 5, "เพิ่มเครื่อง": 10}},
-            "m2": {"name": "ข้าวซอยไก่", "price": 50, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Khao_Soi_Kai.jpg/800px-Khao_Soi_Kai.jpg", "active": True, "options": {"น่องลาย": 10}},
+#            "m2": {"name": "ข้าวซอยไก่", "price": 50, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Khao_Soi_Kai.jpg/800px-Khao_Soi_Kai.jpg", "active": True, "options": {"น่องลาย": 10}},
             "m3": {"name": "แคบหมูไร้มัน", "price": 15, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Khaep_mu.jpg/800px-Khaep_mu.jpg", "active": True, "options": {}},
 #            "m4": {"name": "ไส้อั่วสมุนไพร", "price": 60, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Sai_ua_สมุนไพร.jpg/800px-Sai_ua_สมุนไพร.jpg", "active": True, "options": {"ข้าวเหนียว": 10}},
 #            "m5": {"name": "น้ำพริกหนุ่ม", "price": 40, "img": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Nam_phrik_num.jpg/800px-Nam_phrik_num.jpg", "active": True, "options": {"ไข่ต้ม": 10}},
