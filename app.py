@@ -268,7 +268,7 @@ def admin_page():
                     with c2:
                         st.write("สถานะ:")
                         current_stat = order['status']
-                        opts = ["รอตรวจสอบรายการ", "กำลังทำอาหาร", "กำลังจัดส่ง", "จัดส่งสำเร็จ", "ยกเลิก"]
+                        opts = ["รอตรวจสอบ", "กำลังปรุง", "กำลังส่ง", "ส่งสำเร็จ", "ยกเลิก"]
                         new_stat = st.selectbox("Update", opts, index=opts.index(current_stat), key=f"st_{order['id']}", label_visibility="collapsed")
                         
                         if new_stat != current_stat:
@@ -305,7 +305,7 @@ if mode == "ลูกค้า":
     customer_page()
 else:
     pwd = st.sidebar.text_input("รหัสผ่าน Admin", type="password")
-    if pwd == "4321qq":
+    if pwd == "1234":
         admin_page()
     elif pwd:
         st.error("รหัสผ่านผิด")
