@@ -6,7 +6,7 @@ import time
 # ==========================================
 # 🎨 0. CUSTOM CSS & CONFIG (Modern UI)
 # ==========================================
-st.set_page_config(page_title="EasyEats App", layout="centered", page_icon="🍜")
+st.set_page_config(page_title="KanomJeen App", layout="centered", page_icon="🍜")
 
 # CSS เพื่อปรับแต่งหน้าตาให้เหมือน App มือถือ
 st.markdown("""
@@ -69,7 +69,7 @@ if 'cart' not in st.session_state:
 def render_header():
     # Banner ร้านค้า
     st.image("https://images.unsplash.com/photo-1555126634-323283e090fa?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", use_column_width=True)
-    st.title("น้ำเงี้ยววีคเอน")
+    st.title("KanomJeen Weekend")
     st.caption("อาหารเหนือแท้ๆ ส่งตรงถึงหน้าบ้านคุณ")
 
 def cart_summary():
@@ -268,7 +268,7 @@ def admin_page():
                     with c2:
                         st.write("สถานะ:")
                         current_stat = order['status']
-                        opts = ["รอตรวจสอบ", "กำลังปรุง", "กำลังส่ง", "ส่งสำเร็จ", "ยกเลิก"]
+                        opts = ["รอตรวจสอบรายการ", "กำลังทำอาหาร", "กำลังจัดส่ง", "จัดส่งสำเร็จ", "ยกเลิก"]
                         new_stat = st.selectbox("Update", opts, index=opts.index(current_stat), key=f"st_{order['id']}", label_visibility="collapsed")
                         
                         if new_stat != current_stat:
@@ -305,7 +305,7 @@ if mode == "ลูกค้า":
     customer_page()
 else:
     pwd = st.sidebar.text_input("รหัสผ่าน Admin", type="password")
-    if pwd == "1234":
+    if pwd == "4321qq":
         admin_page()
     elif pwd:
         st.error("รหัสผ่านผิด")
