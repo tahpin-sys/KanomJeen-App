@@ -296,7 +296,7 @@ def admin_page():
 # ==========================================
 # ใช้ Sidebar แบบซ่อนเนียนๆ
 with st.sidebar:
-    st.header("EasyEats System")
+    st.header("KanomJeen App")
     mode = st.radio("Menu", ["ลูกค้า", "ผู้ดูแลร้าน"])
     st.divider()
     st.caption("Developed with Streamlit")
